@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音楽ファイル自動表示プレイヤー</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+            margin: 0;
+        }
+        .player {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        audio {
+            flex: 1;
+            min-width: 300px;
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        input[type="range"] {
+            width: 80px;
+        }
+        .volume-label {
+            font-size: 12px;
+            color: #666;
+            min-width: 30px;
+        }
+        h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            color: #dc3545;
+            padding: 10px;
+            background: #f8d7da;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .master-controls {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .master-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .master-btn:hover {
+            background: #0056b3;
+        }
+        .master-btn.stop {
+            background: #dc3545;
+        }
+        .master-btn.stop:hover {
+            background: #c82333;
+        }
+        .master-volume {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            audio {
+                min-width: auto;
+            }
+            .master-controls {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 音楽プレイヤー</h1>
+    
+    <div class="master-controls">
+        <button class="master-btn stop" onclick="stopAll()">全て停止</button>
+        <div class="master-volume">
+            <span>全体音量:</span>
+            <input type="range" min="0" max="100" value="50" onchange="setMasterVolume(this.value)">
+            <span id="masterVolumeLabel">50%</span>
+        </div>
+    </div>
+    
+    <div id="loading" class="loading">音楽ファイルを読み込み中...</div>
+    <div id="players"></div>
+
+    <script>
+        // 音楽ファイルリスト (JSONで管理)
+        const musicFiles = [
+            { name: "開始のブザー", file: "sounds\\Opening_Buzzer01-2.mp3" },
+            { name: "空襲警報", file: "sounds\\kong-xi-jing-bao-128-ytshorts.savetube.me.mp3" },
+            { name: "飛行機の滑走音", file: "sounds\\runway-of-airport-with-airplane-68226.mp3" },
+            { name: "手紙のBGM", file: "sounds\\anori-henoshou-zhi-huribgm-dova-syndrome-official-youtube-channel-128-ytshorts.savetube.me.mp3" }
+        ];
+
+        // または、一般的なファイル名パターンから自動生成する場合
+        // const autoGenerateFiles = () => {
+        //     const files = [];
+        //     const extensions = ['.mp3', '.wav', '.ogg'];
+        //     // 例: bgm1.mp3, bgm2.mp3, se1.wav など想定される名前
+        //     for (let i = 1; i <= 10; i++) {
+        //         files.push({ name: `BGM ${i}`, file: `/sounds/bgm${i}.mp3` });
+        //         files.push({ name: `効果音 ${i}`, file: `/sounds/se${i}.wav` });
+        //     }
+        //     return files;
+        // };
+
+        let audioElements = [];
+
+        function createPlayer(music, index) {
+            const playersDiv = document.getElementById('players');
+            
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'player';
+            playerDiv.id = 'player' + index;
+            
+            playerDiv.innerHTML = `
+                <h3>${music.name}</h3>
+                <div class="controls">
+                    <audio controls preload="metadata">
+                        <source src="${music.file}" type="audio/mpeg">
+                        <source src="${music.file}" type="audio/wav">
+                        <source src="${music.file}" type="audio/ogg">
+                        お使いのブラウザはオーディオ要素をサポートしていません。
+                    </audio>
+                    <div class="volume-control">
+                        <span>音量:</span>
+                        <input type="range" min="0" max="100" value="50" onchange="setVolume(this, ${index})">
+                        <span class="volume-label">50%</span>
+                    </div>
+                </div>
+            `;
+            
+            playersDiv.appendChild(playerDiv);
+            
+            const audio = playerDiv.querySelector('audio');
+            audio.volume = 0.5;
+            audioElements.push(audio);
+
+            // ファイルが存在するかチェック
+            audio.addEventListener('error', function() {
+                playerDiv.style.opacity = '0.5';
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error';
+                errorDiv.textContent = 'ファイルが見つかりません: ' + music.file;
+                playerDiv.appendChild(errorDiv);
+            });
+
+            // ロード完了時の処理
+            audio.addEventListener('loadedmetadata', function() {
+                playerDiv.style.opacity = '1';
+            });
+        }
+
+        function setVolume(slider, index) {
+            const audio = audioElements[index];
+            const label = slider.parentElement.querySelector('.volume-label');
+            
+            const volume = slider.value / 100;
+            audio.volume = volume;
+            label.textContent = slider.value + '%';
+        }
+
+
+
+        function stopAll() {
+            audioElements.forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+        }
+
+        function setMasterVolume(value) {
+            const volume = value / 100;
+            audioElements.forEach(audio => {
+                audio.volume = volume;
+            });
+            
+            // 個別音量スライダーも更新
+            document.querySelectorAll('.volume-control input[type="range"]').forEach(slider => {
+                slider.value = value;
+                const label = slider.parentElement.querySelector('.volume-label');
+                label.textContent = value + '%';
+            });
+            
+            document.getElementById('masterVolumeLabel').textContent = value + '%';
+        }
+
+        // 初期化
+        function init() {
+            const loadingDiv = document.getElementById('loading');
+            
+            if (musicFiles.length === 0) {
+                loadingDiv.innerHTML = '<div class="error">音楽ファイルリストが空です。musicFiles配列に音楽ファイルを追加してください。</div>';
+                return;
+            }
+
+            musicFiles.forEach((music, index) => {
+                createPlayer(music, index);
+            });
+
+            loadingDiv.style.display = 'none';
+        }
+
+        // ページ読み込み後に初期化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+
+    <div style="margin-top: 30px; padding: 15px; background: #e9ecef; border-radius: 5px; font-size: 14px; color: #666;">
+        <strong>設定方法:</strong><br>
+        • JavaScriptの<code>musicFiles</code>配列で音楽ファイルを管理<br>
+        • 各ファイルは<code>{ name: "表示名", file: "/sounds/ファイル名" }</code>の形式<br>
+        • 存在しないファイルはエラー表示<br>
+        • 全体操作と個別操作が可能<br><br>
+        
+        <strong>対応形式:</strong> MP3, WAV, OGG
+    </div>
+</body>
+</html>
